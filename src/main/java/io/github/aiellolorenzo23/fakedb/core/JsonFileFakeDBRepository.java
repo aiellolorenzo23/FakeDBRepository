@@ -2,7 +2,6 @@ package io.github.aiellolorenzo23.fakedb.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
-import io.github.aiellolorenzo23.fakedb.autoconfigure.FakeDBProperties;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConfigurationException;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBEntityNotFoundException;
 
@@ -22,8 +21,10 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
     private final Class<T> entityClass;
     private final Field idField;
 
+    private final Class<ID> idClass;
+
     public JsonFileFakeDBRepository(
-            FakeDBProperties properties,
+            FakeDBStore store,
             ObjectMapper objectMapper,
             String schema,
             String table,
@@ -31,10 +32,11 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
             Class<ID> idClass
     ) {
         this.objectMapper = objectMapper;
-        this.store = new FakeDBStore(properties, objectMapper);
+        this.store = store;
         this.schema = schema;
         this.table = table;
         this.entityClass = entityClass;
+        this.idClass = idClass;
         this.idField = resolveIdField(entityClass);
         this.idField.setAccessible(true);
     }

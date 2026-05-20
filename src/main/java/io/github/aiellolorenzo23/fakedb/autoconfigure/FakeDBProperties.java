@@ -9,6 +9,8 @@ public class FakeDBProperties {
 
     private String path;
 
+    private String database = "default";
+
     private String defaultSchema = "main";
 
     private boolean autoCreate = true;
@@ -31,6 +33,14 @@ public class FakeDBProperties {
 
     public void setPath(String path) {
         this.path = path;
+    }
+
+    public String getDatabase() {
+        return database;
+    }
+
+    public void setDatabase(String database) {
+        this.database = database;
     }
 
     public String getDefaultSchema() {

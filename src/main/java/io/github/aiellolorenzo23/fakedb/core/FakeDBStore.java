@@ -21,47 +21,76 @@ public class FakeDBStore {
         this.objectMapper = objectMapper;
     }
 
-    public FakeDBDatabase load() {
+    public synchronized FakeDBDatabase load() {
         Path path = resolvePath();
+
         try {
             if (Files.notExists(path)) {
                 if (!properties.isAutoCreate()) {
                     throw new FakeDBConfigurationException("FakeDB file does not exist: " + path);
                 }
-                createEmptyDatabase(path);
+
+                return createEmptyDatabase();
             }
+
             if (Files.size(path) == 0) {
-                return new FakeDBDatabase();
+                return createEmptyDatabase();
             }
-            return objectMapper.readValue(path.toFile(), FakeDBDatabase.class);
+
+            FakeDBDatabase database = objectMapper.readValue(path.toFile(), FakeDBDatabase.class);
+            normalizeDatabase(database);
+            return database;
         } catch (IOException ex) {
             throw new FakeDBException("Cannot load FakeDB file: " + path, ex);
         }
     }
 
-    public void save(FakeDBDatabase database) {
+    public synchronized void save(FakeDBDatabase database) {
         Path path = resolvePath();
+
         try {
             ensureParentDirectory(path);
+            normalizeDatabase(database);
+
             if (properties.isBackupOnSave() && Files.exists(path)) {
                 Files.copy(path, path.resolveSibling(path.getFileName() + ".bak"), StandardCopyOption.REPLACE_EXISTING);
             }
+
             ObjectWriter writer = properties.isPrettyPrint()
                     ? objectMapper.writerWithDefaultPrettyPrinter()
                     : objectMapper.writer();
+
             writer.writeValue(path.toFile(), database);
         } catch (IOException ex) {
             throw new FakeDBException("Cannot save FakeDB file: " + path, ex);
         }
     }
 
-    private void createEmptyDatabase(Path path) throws IOException {
-        ensureParentDirectory(path);
-        save(new FakeDBDatabase());
+    private FakeDBDatabase createEmptyDatabase() {
+        FakeDBDatabase database = new FakeDBDatabase();
+        database.setVersion("1.0.0");
+        database.setDatabase(properties.getDatabase());
+        database.schema(properties.getDefaultSchema());
+        return database;
+    }
+
+    private void normalizeDatabase(FakeDBDatabase database) {
+        if (database.getVersion() == null || database.getVersion().isBlank()) {
+            database.setVersion("1.0.0");
+        }
+
+        if (database.getDatabase() == null || database.getDatabase().isBlank()) {
+            database.setDatabase(properties.getDatabase());
+        }
+
+        if (database.getSchemas() == null || database.getSchemas().isEmpty()) {
+            database.schema(properties.getDefaultSchema());
+        }
     }
 
     private void ensureParentDirectory(Path path) throws IOException {
         Path parent = path.toAbsolutePath().getParent();
+
         if (parent != null) {
             Files.createDirectories(parent);
         }
@@ -69,9 +98,11 @@ public class FakeDBStore {
 
     private Path resolvePath() {
         String configuredPath = properties.getPath();
+
         if (configuredPath == null || configuredPath.isBlank()) {
             throw new FakeDBConfigurationException("FakeDB path is required. Configure fakedb.path");
         }
+
         return Path.of(configuredPath);
     }
 }

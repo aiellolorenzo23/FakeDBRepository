@@ -8,10 +8,12 @@ public class FakeDBTemplate {
 
     private final FakeDBProperties properties;
     private final ObjectMapper objectMapper;
+    private final FakeDBStore store;
 
     public FakeDBTemplate(FakeDBProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.store = new FakeDBStore(properties, objectMapper);
     }
 
     public <T, ID> FakeDBRepository<T, ID> repository(
@@ -20,7 +22,14 @@ public class FakeDBTemplate {
             Class<T> entityClass,
             Class<ID> idClass
     ) {
-        return new JsonFileFakeDBRepository<>(properties, objectMapper, schema, table, entityClass, idClass);
+        return new JsonFileFakeDBRepository<>(
+                store,
+                objectMapper,
+                schema,
+                table,
+                entityClass,
+                idClass
+        );
     }
 
     public <T, ID> FakeDBRepository<T, ID> repository(String table, Class<T> entityClass, Class<ID> idClass) {
@@ -29,10 +38,13 @@ public class FakeDBTemplate {
 
     public <T, ID> FakeDBRepository<T, ID> repository(Class<T> entityClass, Class<ID> idClass) {
         FakeDBTable table = entityClass.getAnnotation(FakeDBTable.class);
+
         if (table == null) {
             return repository(entityClass.getSimpleName(), entityClass, idClass);
         }
+
         String schema = table.schema().isBlank() ? properties.getDefaultSchema() : table.schema();
+
         return repository(schema, table.value(), entityClass, idClass);
     }
 }
