@@ -56,7 +56,7 @@ public class FakeDBRepositoryFactoryBean implements FactoryBean<Object>, Initial
         proxy = Proxy.newProxyInstance(
                 repositoryInterface.getClassLoader(),
                 new Class<?>[]{repositoryInterface},
-                new RepositoryInvocationHandler(repositoryInterface, delegate)
+                new RepositoryInvocationHandler(repositoryInterface, repositoryTypes.entityClass(), delegate)
         );
     }
 
@@ -132,9 +132,16 @@ public class FakeDBRepositoryFactoryBean implements FactoryBean<Object>, Initial
 
         private final FakeDBRepository<?, ?> delegate;
 
-        private RepositoryInvocationHandler(Class<?> repositoryInterface, FakeDBRepository<?, ?> delegate) {
+        private final FakeDBQueryMethodInvoker queryMethodInvoker;
+
+        private RepositoryInvocationHandler(
+                Class<?> repositoryInterface,
+                Class<?> entityClass,
+                FakeDBRepository<?, ?> delegate
+        ) {
             this.repositoryInterface = repositoryInterface;
             this.delegate = delegate;
+            this.queryMethodInvoker = new FakeDBQueryMethodInvoker(entityClass, delegate);
         }
 
         @Override
@@ -145,10 +152,11 @@ public class FakeDBRepositoryFactoryBean implements FactoryBean<Object>, Initial
 
             Method delegateMethod = findDelegateMethod(method);
             if (delegateMethod == null) {
-                throw new UnsupportedOperationException(
-                        "FakeDB repository method is not supported yet: " + method.getName()
-                                + ". Query method derivation will be added separately."
-                );
+                if (queryMethodInvoker.supports(method)) {
+                    return queryMethodInvoker.invoke(method, args);
+                }
+
+                throw new UnsupportedOperationException("FakeDB repository method is not supported: " + method.getName());
             }
 
             return delegateMethod.invoke(delegate, args);

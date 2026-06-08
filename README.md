@@ -254,8 +254,45 @@ public class StudentService {
 }
 ```
 
-Automatic repositories currently support the methods declared by `FakeDBRepository`.
-Derived query methods such as `findByName(String name)` are planned but not implemented yet.
+Automatic repositories support the methods declared by `FakeDBRepository` and basic derived query methods:
+
+```java
+public interface StudentRepository extends FakeDBRepository<Student, Long> {
+
+    List<Student> findByName(String name);
+
+    Optional<Student> findByNameAndActiveTrue(String name);
+
+    List<Student> findByAgeGreaterThan(Integer age);
+
+    boolean existsByEmail(String email);
+
+    long deleteByActiveFalse();
+}
+```
+
+Supported query method prefixes:
+
+| Prefix | Example |
+| --- | --- |
+| `findBy` | `findByName(String name)` |
+| `existsBy` | `existsByEmail(String email)` |
+| `deleteBy` | `deleteByActiveFalse()` |
+
+Supported operators:
+
+| Operator | Example |
+| --- | --- |
+| equality | `findByName(String name)` |
+| `And` | `findByNameAndActiveTrue(String name)` |
+| `GreaterThan` | `findByAgeGreaterThan(Integer age)` |
+| `LessThan` | `findByAgeLessThan(Integer age)` |
+| `Containing` | `findByNameContaining(String text)` or `findByTagsContaining(String tag)` |
+| `In` | `findByNameIn(Collection<String> names)` |
+| `True` / `False` | `findByActiveTrue()` / `deleteByActiveFalse()` |
+
+Derived queries are evaluated in memory. Nested properties, `Or`, ordering in method names, and full Spring Data
+query derivation semantics are not implemented.
 
 ## Repository API
 
