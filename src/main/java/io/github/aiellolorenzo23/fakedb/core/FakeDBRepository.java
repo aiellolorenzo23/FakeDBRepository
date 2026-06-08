@@ -13,6 +13,8 @@ public interface FakeDBRepository<T, ID> {
 
     List<T> findAll();
 
+    List<T> findAll(FakeDBFetchMode fetchMode);
+
     List<T> findAll(Sort sort);
 
     Page<T> findAll(Pageable pageable);
@@ -22,6 +24,8 @@ public interface FakeDBRepository<T, ID> {
     Optional<T> findFirst(Predicate<T> predicate);
 
     Optional<T> findById(ID id);
+
+    Optional<T> findById(ID id, FakeDBFetchMode fetchMode);
 
     T save(T entity);
 

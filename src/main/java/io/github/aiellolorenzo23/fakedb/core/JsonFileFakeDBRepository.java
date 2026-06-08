@@ -7,6 +7,7 @@ import io.github.aiellolorenzo23.fakedb.annotation.FakeDBGeneratedValue;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBLastModifiedDate;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBNotNull;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBReference;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBUnique;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConfigurationException;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConstraintViolationException;
@@ -17,6 +18,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -62,7 +65,20 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
 
     @Override
     public synchronized List<T> findAll() {
-        return store.read(database -> toEntities(database.table(schema, table)));
+        return findAll(FakeDBFetchMode.RAW);
+    }
+
+    @Override
+    public synchronized List<T> findAll(FakeDBFetchMode fetchMode) {
+        Objects.requireNonNull(fetchMode, "fetchMode cannot be null");
+
+        return store.read(database -> {
+            List<T> entities = toEntities(database.table(schema, table));
+            if (fetchMode == FakeDBFetchMode.RESOLVE_REFERENCES) {
+                resolveReferences(entities, database);
+            }
+            return entities;
+        });
     }
 
     @Override
@@ -114,7 +130,12 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
 
     @Override
     public synchronized Optional<T> findById(ID id) {
-        return findAll().stream()
+        return findById(id, FakeDBFetchMode.RAW);
+    }
+
+    @Override
+    public synchronized Optional<T> findById(ID id, FakeDBFetchMode fetchMode) {
+        return findAll(fetchMode).stream()
                 .filter(entity -> Objects.equals(readId(entity), id))
                 .findFirst();
     }
@@ -204,6 +225,65 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
         }
     }
 
+    private void resolveReferences(List<T> entities, FakeDBDatabase database) {
+        for (T entity : entities) {
+            for (Field referenceField : allFields(entityClass)) {
+                FakeDBReference reference = referenceField.getAnnotation(FakeDBReference.class);
+                if (reference != null) {
+                    resolveReference(entity, referenceField, reference, database);
+                }
+            }
+        }
+    }
+
+    private void resolveReference(T entity, Field referenceField, FakeDBReference reference, FakeDBDatabase database) {
+        Field localField = resolveField(entityClass, reference.localField());
+        Object localValue = readField(entity, localField);
+        if (localValue == null) {
+            writeField(entity, referenceField, reference.multiple() ? List.of() : null);
+            return;
+        }
+
+        Class<?> targetClass = resolveReferenceTargetClass(referenceField, reference);
+        Field targetField = resolveField(targetClass, reference.targetField());
+        String targetSchema = reference.schema().isBlank() ? schema : reference.schema();
+        List<Object> targetRows = database.table(targetSchema, reference.table());
+        List<?> targets = targetRows.stream()
+                .map(row -> objectMapper.convertValue(row, targetClass))
+                .filter(target -> matchesReference(localValue, readField(target, targetField), reference.multiple()))
+                .toList();
+
+        if (reference.multiple()) {
+            writeField(entity, referenceField, targets);
+        } else {
+            writeField(entity, referenceField, targets.stream().findFirst().orElse(null));
+        }
+    }
+
+    private boolean matchesReference(Object localValue, Object targetValue, boolean multiple) {
+        if (multiple && localValue instanceof Collection<?> collection) {
+            return collection.contains(targetValue);
+        }
+        return Objects.equals(localValue, targetValue);
+    }
+
+    private Class<?> resolveReferenceTargetClass(Field referenceField, FakeDBReference reference) {
+        if (!reference.multiple()) {
+            return referenceField.getType();
+        }
+
+        Type genericType = referenceField.getGenericType();
+        if (genericType instanceof ParameterizedType parameterizedType
+                && parameterizedType.getActualTypeArguments()[0] instanceof Class<?> targetClass) {
+            return targetClass;
+        }
+
+        throw new FakeDBConfigurationException(
+                "FakeDB reference field " + referenceField.getName()
+                        + " must declare a concrete generic target type"
+        );
+    }
+
     private Comparator<T> comparator(Sort sort) {
         Comparator<T> comparator = null;
 
@@ -252,7 +332,7 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
     }
 
     private static Field resolveField(Class<?> entityClass, String property) {
-        for (Field field : entityClass.getDeclaredFields()) {
+        for (Field field : allFields(entityClass)) {
             if (field.getName().equals(property)) {
                 return field;
             }
@@ -431,7 +511,7 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
         }
     }
 
-    private Object readField(T entity, Field field) {
+    private Object readField(Object entity, Field field) {
         try {
             field.setAccessible(true);
             return field.get(entity);
@@ -440,7 +520,7 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
         }
     }
 
-    private void writeField(T entity, Field field, Object value) {
+    private void writeField(Object entity, Field field, Object value) {
         try {
             field.setAccessible(true);
             field.set(entity, value);

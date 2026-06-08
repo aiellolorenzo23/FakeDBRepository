@@ -2,8 +2,10 @@ package io.github.aiellolorenzo23.fakedb.core;
 
 import com.fasterxml.jackson.databind.PropertyName;
 import com.fasterxml.jackson.databind.introspect.Annotated;
+import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
 import com.fasterxml.jackson.databind.introspect.JacksonAnnotationIntrospector;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBColumn;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBTransient;
 
 class FakeDBAnnotationIntrospector extends JacksonAnnotationIntrospector {
 
@@ -17,6 +19,11 @@ class FakeDBAnnotationIntrospector extends JacksonAnnotationIntrospector {
     public PropertyName findNameForDeserialization(Annotated annotated) {
         PropertyName columnName = findColumnName(annotated);
         return columnName != null ? columnName : super.findNameForDeserialization(annotated);
+    }
+
+    @Override
+    public boolean hasIgnoreMarker(AnnotatedMember member) {
+        return _findAnnotation(member, FakeDBTransient.class) != null || super.hasIgnoreMarker(member);
     }
 
     private PropertyName findColumnName(Annotated annotated) {

@@ -7,6 +7,8 @@ import io.github.aiellolorenzo23.fakedb.annotation.FakeDBGeneratedValue;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBLastModifiedDate;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBNotNull;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBReference;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBTransient;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBUnique;
 import io.github.aiellolorenzo23.fakedb.autoconfigure.FakeDBProperties;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConstraintViolationException;
@@ -433,6 +435,52 @@ class JsonFileFakeDBRepositoryTest {
                 });
     }
 
+    @Test
+    void resolvesReferencesOnlyWhenRequestedAndDoesNotPersistTransientFields() throws Exception {
+        FakeDBProperties properties = new FakeDBProperties();
+        Path dbPath = tempDir.resolve("database.json");
+        properties.setPath(dbPath.toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<RelationProduct, Long> productRepository =
+                template.repository("products", RelationProduct.class, Long.class);
+        FakeDBRepository<RelationUser, Long> userRepository =
+                template.repository("users", RelationUser.class, Long.class);
+        FakeDBRepository<RelationOrder, Long> orderRepository =
+                template.repository("orders", RelationOrder.class, Long.class);
+
+        productRepository.saveAll(List.of(
+                new RelationProduct(1L, "Keyboard"),
+                new RelationProduct(2L, "Mouse"),
+                new RelationProduct(3L, "Monitor")
+        ));
+        userRepository.save(new RelationUser(10L, "ada"));
+
+        RelationOrder order = new RelationOrder(100L, List.of(1L, 2L), 10L);
+        order.setProducts(List.of(new RelationProduct(99L, "Should not be persisted")));
+        order.setUser(new RelationUser(99L, "transient-user"));
+
+        orderRepository.save(order);
+
+        String json = Files.readString(dbPath);
+        assertThat(json).doesNotContain("Should not be persisted");
+        assertThat(json).doesNotContain("transient-user");
+
+        assertThat(orderRepository.findById(100L))
+                .hasValueSatisfying(rawOrder -> {
+                    assertThat(rawOrder.getProducts()).isNull();
+                    assertThat(rawOrder.getUser()).isNull();
+                });
+
+        assertThat(orderRepository.findById(100L, FakeDBFetchMode.RESOLVE_REFERENCES))
+                .hasValueSatisfying(resolvedOrder -> {
+                    assertThat(resolvedOrder.getProducts())
+                            .extracting(RelationProduct::getName)
+                            .containsExactly("Keyboard", "Mouse");
+                    assertThat(resolvedOrder.getUser().getUsername()).isEqualTo("ada");
+                });
+    }
+
     private record Student(@FakeDBId Long id, String name) {
     }
 
@@ -582,6 +630,139 @@ class JsonFileFakeDBRepositoryTest {
 
         public void setUpdatedAt(LocalDateTime updatedAt) {
             this.updatedAt = updatedAt;
+        }
+    }
+
+    private static class RelationProduct {
+
+        @FakeDBId
+        private Long id;
+
+        private String name;
+
+        public RelationProduct() {
+        }
+
+        private RelationProduct(Long id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+    }
+
+    private static class RelationUser {
+
+        @FakeDBId
+        private Long id;
+
+        private String username;
+
+        public RelationUser() {
+        }
+
+        private RelationUser(Long id, String username) {
+            this.id = id;
+            this.username = username;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+    }
+
+    private static class RelationOrder {
+
+        @FakeDBId
+        private Long id;
+
+        @FakeDBColumn("product_id")
+        private List<Long> productIds;
+
+        @FakeDBColumn("user_id")
+        private Long userId;
+
+        @FakeDBTransient
+        @FakeDBReference(table = "products", localField = "productIds", multiple = true)
+        private List<RelationProduct> products;
+
+        @FakeDBTransient
+        @FakeDBReference(table = "users", localField = "userId")
+        private RelationUser user;
+
+        public RelationOrder() {
+        }
+
+        private RelationOrder(Long id, List<Long> productIds, Long userId) {
+            this.id = id;
+            this.productIds = productIds;
+            this.userId = userId;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public List<Long> getProductIds() {
+            return productIds;
+        }
+
+        public void setProductIds(List<Long> productIds) {
+            this.productIds = productIds;
+        }
+
+        public Long getUserId() {
+            return userId;
+        }
+
+        public void setUserId(Long userId) {
+            this.userId = userId;
+        }
+
+        public List<RelationProduct> getProducts() {
+            return products;
+        }
+
+        public void setProducts(List<RelationProduct> products) {
+            this.products = products;
+        }
+
+        public RelationUser getUser() {
+            return user;
+        }
+
+        public void setUser(RelationUser user) {
+            this.user = user;
         }
     }
 

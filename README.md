@@ -20,6 +20,7 @@ a production database, but to make persistent mock data easy to use inside Sprin
 - Field-to-column mapping with `@FakeDBColumn`.
 - Lightweight validation with `@FakeDBNotNull` and `@FakeDBUnique`.
 - Auditing with `@FakeDBCreatedDate` and `@FakeDBLastModifiedDate`.
+- Lightweight reference resolution with `@FakeDBReference`, `@FakeDBTransient`, and `FakeDBFetchMode`.
 - Predicate-based repository queries.
 - Sorting and pagination through Spring Data `Sort`, `Pageable`, and `Page`.
 - Configurable database file path, database name, default schema, pretty printing, auto creation, and backups.
@@ -304,11 +305,13 @@ query derivation semantics are not implemented.
 
 ```java
 List<T> findAll();
+List<T> findAll(FakeDBFetchMode fetchMode);
 List<T> findAll(Sort sort);
 Page<T> findAll(Pageable pageable);
 List<T> findAll(Predicate<T> predicate);
 Optional<T> findFirst(Predicate<T> predicate);
 Optional<T> findById(ID id);
+Optional<T> findById(ID id, FakeDBFetchMode fetchMode);
 T save(T entity);
 List<T> saveAll(Collection<T> entities);
 boolean existsById(ID id);
@@ -484,6 +487,56 @@ This maps to JSON like:
   "free_ship": true
 }
 ```
+
+## Lightweight References
+
+FakeDB can resolve simple references explicitly when requested. Persist local id fields and mark resolved fields
+as transient:
+
+```java
+public class Order {
+
+    @FakeDBId
+    private Long id;
+
+    @FakeDBColumn("product_id")
+    private List<Long> productIds;
+
+    @FakeDBColumn("user_id")
+    private Long userId;
+
+    @FakeDBTransient
+    @FakeDBReference(table = "products", localField = "productIds", multiple = true)
+    private List<Product> products;
+
+    @FakeDBTransient
+    @FakeDBReference(table = "users", localField = "userId")
+    private User user;
+}
+```
+
+By default, repositories return raw entities and do not resolve references:
+
+```java
+Optional<Order> raw = orders.findById(1L);
+```
+
+Resolve references explicitly:
+
+```java
+Optional<Order> expanded =
+        orders.findById(1L, FakeDBFetchMode.RESOLVE_REFERENCES);
+
+List<Order> expandedOrders =
+        orders.findAll(FakeDBFetchMode.RESOLVE_REFERENCES);
+```
+
+`@FakeDBTransient` prevents resolved fields from being written to JSON.
+`@FakeDBReference` supports single references and collection references through `multiple = true`.
+The default target field is `id`; override it with `targetField` when needed.
+
+Reference resolution is eager and in memory. It is not lazy loading, not cascading persistence, and not a relational
+join engine. Reference fields must be writable.
 
 ## JSON Format
 
