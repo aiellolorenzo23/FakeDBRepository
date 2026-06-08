@@ -1,5 +1,9 @@
 package io.github.aiellolorenzo23.fakedb.core;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -8,6 +12,10 @@ import java.util.function.Predicate;
 public interface FakeDBRepository<T, ID> {
 
     List<T> findAll();
+
+    List<T> findAll(Sort sort);
+
+    Page<T> findAll(Pageable pageable);
 
     List<T> findAll(Predicate<T> predicate);
 

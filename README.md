@@ -16,6 +16,7 @@ a production database, but to make persistent mock data easy to use inside Sprin
 - Optional entity-to-table mapping with `@FakeDBTable`.
 - Field-to-column mapping with `@FakeDBColumn`.
 - Predicate-based repository queries.
+- Sorting and pagination through Spring Data `Sort`, `Pageable`, and `Page`.
 - Configurable database file path, database name, default schema, pretty printing, auto creation, and backups.
 - Jackson support, including Java time modules through `findAndRegisterModules()`.
 
@@ -219,6 +220,8 @@ FakeDBRepository<Student, Long> archivedStudents =
 
 ```java
 List<T> findAll();
+List<T> findAll(Sort sort);
+Page<T> findAll(Pageable pageable);
 List<T> findAll(Predicate<T> predicate);
 Optional<T> findFirst(Predicate<T> predicate);
 Optional<T> findById(ID id);
@@ -247,6 +250,19 @@ Optional<Student> firstStudentStartingWithL =
 ```
 
 `saveAll` performs a single load-modify-save operation for the whole collection.
+
+Sorting and pagination use Spring Data Commons types and are evaluated in memory:
+
+```java
+List<Student> sorted =
+        students.findAll(Sort.by("name").ascending());
+
+Page<Student> page =
+        students.findAll(PageRequest.of(0, 10, Sort.by("name").descending()));
+```
+
+Sort properties normally use Java entity field names. Fields annotated with `@FakeDBColumn` can also be
+sorted by their JSON column name.
 
 ## Entity Mapping
 

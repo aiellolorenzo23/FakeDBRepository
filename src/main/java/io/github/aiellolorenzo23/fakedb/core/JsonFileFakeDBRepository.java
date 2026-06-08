@@ -1,13 +1,19 @@
 package io.github.aiellolorenzo23.fakedb.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBColumn;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConfigurationException;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBEntityNotFoundException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -45,6 +51,35 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
     @Override
     public synchronized List<T> findAll() {
         return store.read(database -> toEntities(database.table(schema, table)));
+    }
+
+    @Override
+    public synchronized List<T> findAll(Sort sort) {
+        Objects.requireNonNull(sort, "sort cannot be null");
+
+        List<T> entities = new ArrayList<>(findAll());
+        if (sort.isUnsorted()) {
+            return List.copyOf(entities);
+        }
+
+        entities.sort(comparator(sort));
+        return List.copyOf(entities);
+    }
+
+    @Override
+    public synchronized Page<T> findAll(Pageable pageable) {
+        Objects.requireNonNull(pageable, "pageable cannot be null");
+
+        List<T> entities = pageable.getSort().isSorted() ? findAll(pageable.getSort()) : findAll();
+        if (pageable.isUnpaged()) {
+            return new PageImpl<>(entities);
+        }
+
+        int total = entities.size();
+        int fromIndex = Math.min((int) pageable.getOffset(), total);
+        int toIndex = Math.min(fromIndex + pageable.getPageSize(), total);
+
+        return new PageImpl<>(entities.subList(fromIndex, toIndex), pageable, total);
     }
 
     @Override
@@ -156,6 +191,70 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
         } else {
             rows.add(value);
         }
+    }
+
+    private Comparator<T> comparator(Sort sort) {
+        Comparator<T> comparator = null;
+
+        for (Sort.Order order : sort) {
+            Comparator<T> orderComparator = (left, right) -> compareValues(
+                    readSortableValue(left, order),
+                    readSortableValue(right, order),
+                    order
+            );
+
+            comparator = comparator == null ? orderComparator : comparator.thenComparing(orderComparator);
+        }
+
+        return comparator == null ? (left, right) -> 0 : comparator;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private int compareValues(Object left, Object right, Sort.Order order) {
+        Comparator nullComparator = order.getNullHandling() == Sort.NullHandling.NULLS_FIRST
+                ? Comparator.nullsFirst(Comparator.naturalOrder())
+                : Comparator.nullsLast(Comparator.naturalOrder());
+
+        Object leftValue = normalizeSortableValue(left, order);
+        Object rightValue = normalizeSortableValue(right, order);
+        int result = nullComparator.compare(leftValue, rightValue);
+        return order.isAscending() ? result : -result;
+    }
+
+    private Object normalizeSortableValue(Object value, Sort.Order order) {
+        if (value instanceof String string && order.isIgnoreCase()) {
+            return string.toLowerCase();
+        }
+        return value;
+    }
+
+    private Object readSortableValue(T entity, Sort.Order order) {
+        String property = order.getProperty();
+
+        try {
+            Field field = resolveField(entityClass, property);
+            field.setAccessible(true);
+            return field.get(entity);
+        } catch (IllegalAccessException ex) {
+            throw new FakeDBConfigurationException("Cannot read FakeDB sort field " + property, ex);
+        }
+    }
+
+    private static Field resolveField(Class<?> entityClass, String property) {
+        for (Field field : entityClass.getDeclaredFields()) {
+            if (field.getName().equals(property)) {
+                return field;
+            }
+
+            FakeDBColumn column = field.getAnnotation(FakeDBColumn.class);
+            if (column != null && column.value().equals(property)) {
+                return field;
+            }
+        }
+
+        throw new FakeDBConfigurationException(
+                "FakeDB entity " + entityClass.getName() + " has no sortable field named " + property
+        );
     }
 
     @SuppressWarnings("unchecked")

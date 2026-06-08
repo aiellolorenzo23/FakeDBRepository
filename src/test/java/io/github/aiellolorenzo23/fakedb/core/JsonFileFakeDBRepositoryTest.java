@@ -6,6 +6,9 @@ import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
 import io.github.aiellolorenzo23.fakedb.autoconfigure.FakeDBProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -221,6 +224,72 @@ class JsonFileFakeDBRepositoryTest {
 
         assertThat(repository.findById(1L))
                 .hasValueSatisfying(student -> assertThat(student.name()).isEqualTo("Lorenzo"));
+    }
+
+    @Test
+    void findsAllSortedByEntityField() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<Student, Long> repository = template.repository("students", Student.class, Long.class);
+
+        repository.saveAll(List.of(
+                new Student(1L, "Lorenzo"),
+                new Student(2L, "Ada"),
+                new Student(3L, "Grace")
+        ));
+
+        assertThat(repository.findAll(Sort.by("name").ascending()))
+                .extracting(Student::name)
+                .containsExactly("Ada", "Grace", "Lorenzo");
+        assertThat(repository.findAll(Sort.by("name").descending()))
+                .extracting(Student::name)
+                .containsExactly("Lorenzo", "Grace", "Ada");
+    }
+
+    @Test
+    void findsAllSortedByFakeDBColumnName() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<Product, Long> repository = template.repository("products", Product.class, Long.class);
+
+        repository.saveAll(List.of(
+                new Product(1L, "Zeta Shop", List.of(10L), true),
+                new Product(2L, "Alpha Shop", List.of(20L), false),
+                new Product(3L, "Beta Shop", List.of(30L), true)
+        ));
+
+        assertThat(repository.findAll(Sort.by("shop_name").ascending()))
+                .extracting(Product::shopName)
+                .containsExactly("Alpha Shop", "Beta Shop", "Zeta Shop");
+    }
+
+    @Test
+    void findsAllPagedAndSorted() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<Student, Long> repository = template.repository("students", Student.class, Long.class);
+
+        repository.saveAll(List.of(
+                new Student(1L, "Lorenzo"),
+                new Student(2L, "Ada"),
+                new Student(3L, "Grace"),
+                new Student(4L, "Linus")
+        ));
+
+        Page<Student> page = repository.findAll(PageRequest.of(1, 2, Sort.by("name").ascending()));
+
+        assertThat(page.getTotalElements()).isEqualTo(4);
+        assertThat(page.getTotalPages()).isEqualTo(2);
+        assertThat(page.getNumber()).isEqualTo(1);
+        assertThat(page.getContent())
+                .extracting(Student::name)
+                .containsExactly("Linus", "Lorenzo");
     }
 
     private record Student(@FakeDBId Long id, String name) {
