@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/main/resources/img/logo.png" alt="FakeDB Spring Boot Starter" width="69%">
+</p>
+
 # FakeDB Spring Boot Starter
 
 FakeDB is a lightweight Spring Boot starter that persists application data in a local JSON file.
