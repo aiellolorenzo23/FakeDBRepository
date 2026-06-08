@@ -12,6 +12,7 @@ a production database, but to make persistent mock data easy to use inside Sprin
 - JSON-file backed persistence.
 - Spring Boot 3 auto-configuration.
 - Generic CRUD repository API.
+- Optional automatic Spring bean repositories with `@EnableFakeDBRepositories`.
 - Entity id resolution through `@FakeDBId` or a field named `id`.
 - Optional entity-to-table mapping with `@FakeDBTable`.
 - Field-to-column mapping with `@FakeDBColumn`.
@@ -213,6 +214,48 @@ FakeDBRepository<Student, Long> students =
 FakeDBRepository<Student, Long> archivedStudents =
         fakeDBTemplate.repository("archive", "students", Student.class, Long.class);
 ```
+
+## Automatic Repository Beans
+
+FakeDB can register repository interfaces as Spring beans:
+
+```java
+import io.github.aiellolorenzo23.fakedb.annotation.EnableFakeDBRepositories;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@EnableFakeDBRepositories(basePackages = "com.example.repository")
+@SpringBootApplication
+public class Application {
+}
+```
+
+Define a repository interface:
+
+```java
+import io.github.aiellolorenzo23.fakedb.core.FakeDBRepository;
+
+public interface StudentRepository extends FakeDBRepository<Student, Long> {
+}
+```
+
+Then inject it like a normal Spring bean:
+
+```java
+import org.springframework.stereotype.Service;
+
+@Service
+public class StudentService {
+
+    private final StudentRepository students;
+
+    public StudentService(StudentRepository students) {
+        this.students = students;
+    }
+}
+```
+
+Automatic repositories currently support the methods declared by `FakeDBRepository`.
+Derived query methods such as `findByName(String name)` are planned but not implemented yet.
 
 ## Repository API
 
