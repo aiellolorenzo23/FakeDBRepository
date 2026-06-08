@@ -2,9 +2,14 @@ package io.github.aiellolorenzo23.fakedb.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBColumn;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBCreatedDate;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBGeneratedValue;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBLastModifiedDate;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBNotNull;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBUnique;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConfigurationException;
+import io.github.aiellolorenzo23.fakedb.exception.FakeDBConstraintViolationException;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBEntityNotFoundException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -12,9 +17,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.lang.reflect.Field;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -114,6 +124,9 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
         return store.update(database -> {
             List<Object> rows = database.table(schema, table);
             ID id = ensureId(entity, rows);
+            int existingIndex = findIndexById(rows, id);
+            applyAuditing(entity, existingIndex >= 0);
+            validateEntity(entity, rows, id);
             upsert(rows, entity, id);
             return entity;
         });
@@ -129,6 +142,9 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
 
             for (T entity : entities) {
                 ID id = ensureId(entity, rows);
+                int existingIndex = findIndexById(rows, id);
+                applyAuditing(entity, existingIndex >= 0);
+                validateEntity(entity, rows, id);
                 upsert(rows, entity, id);
                 saved.add(entity);
             }
@@ -344,6 +360,99 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
         }
     }
 
+    private void applyAuditing(T entity, boolean existingEntity) {
+        for (Field field : allFields(entityClass)) {
+            if (field.isAnnotationPresent(FakeDBCreatedDate.class) && !existingEntity && readField(entity, field) == null) {
+                writeField(entity, field, nowValue(field));
+            }
+
+            if (field.isAnnotationPresent(FakeDBLastModifiedDate.class)) {
+                writeField(entity, field, nowValue(field));
+            }
+        }
+    }
+
+    private Object nowValue(Field field) {
+        Class<?> type = field.getType();
+        if (type == Instant.class) {
+            return Instant.now();
+        }
+        if (type == Date.class) {
+            return Date.from(Instant.now());
+        }
+        if (type == String.class) {
+            return Instant.now().toString();
+        }
+        if (type == LocalDateTime.class) {
+            return LocalDateTime.now();
+        }
+        if (type == OffsetDateTime.class) {
+            return OffsetDateTime.now();
+        }
+        if (type == ZonedDateTime.class) {
+            return ZonedDateTime.now();
+        }
+
+        throw new FakeDBConfigurationException(
+                "FakeDB auditing field " + field.getName()
+                + " must be Instant, LocalDateTime, OffsetDateTime, ZonedDateTime, Date, or String"
+        );
+    }
+
+    private void validateEntity(T entity, List<Object> rows, ID id) {
+        for (Field field : allFields(entityClass)) {
+            Object value = readField(entity, field);
+
+            if (field.isAnnotationPresent(FakeDBNotNull.class) && value == null) {
+                throw new FakeDBConstraintViolationException(
+                        "FakeDB field " + field.getName() + " cannot be null"
+                );
+            }
+
+            if (field.isAnnotationPresent(FakeDBUnique.class) && value != null) {
+                validateUniqueField(field, value, rows, id);
+            }
+        }
+    }
+
+    private void validateUniqueField(Field field, Object value, List<Object> rows, ID id) {
+        for (Object row : rows) {
+            T current = objectMapper.convertValue(row, entityClass);
+            if (Objects.equals(readId(current), id)) {
+                continue;
+            }
+
+            Object currentValue = readField(current, field);
+            if (Objects.equals(currentValue, value)) {
+                throw new FakeDBConstraintViolationException(
+                        "FakeDB unique field " + field.getName() + " already contains value " + value
+                );
+            }
+        }
+    }
+
+    private Object readField(T entity, Field field) {
+        try {
+            field.setAccessible(true);
+            return field.get(entity);
+        } catch (IllegalAccessException ex) {
+            throw new FakeDBConfigurationException("Cannot read FakeDB field " + field.getName(), ex);
+        }
+    }
+
+    private void writeField(T entity, Field field, Object value) {
+        try {
+            field.setAccessible(true);
+            field.set(entity, value);
+        } catch (IllegalAccessException | IllegalArgumentException ex) {
+            throw new FakeDBConfigurationException(
+                    "Cannot write FakeDB field " + field.getName()
+                            + ". Generated and audited fields require writable fields.",
+                    ex
+            );
+        }
+    }
+
     private int findIndexById(List<Object> rows, ID id) {
         for (int i = 0; i < rows.size(); i++) {
             T current = objectMapper.convertValue(rows.get(i), entityClass);
@@ -355,7 +464,7 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
     }
 
     private static Field resolveIdField(Class<?> entityClass) {
-        for (Field field : entityClass.getDeclaredFields()) {
+        for (Field field : allFields(entityClass)) {
             if (field.isAnnotationPresent(FakeDBId.class)) {
                 return field;
             }
@@ -368,5 +477,17 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
                     ex
             );
         }
+    }
+
+    private static List<Field> allFields(Class<?> entityClass) {
+        List<Field> fields = new ArrayList<>();
+        Class<?> current = entityClass;
+
+        while (current != null && current != Object.class) {
+            fields.addAll(List.of(current.getDeclaredFields()));
+            current = current.getSuperclass();
+        }
+
+        return fields;
     }
 }

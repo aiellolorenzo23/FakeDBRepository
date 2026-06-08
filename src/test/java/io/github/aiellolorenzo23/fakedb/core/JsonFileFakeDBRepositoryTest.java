@@ -2,9 +2,14 @@ package io.github.aiellolorenzo23.fakedb.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBColumn;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBCreatedDate;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBGeneratedValue;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBLastModifiedDate;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBNotNull;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBUnique;
 import io.github.aiellolorenzo23.fakedb.autoconfigure.FakeDBProperties;
+import io.github.aiellolorenzo23.fakedb.exception.FakeDBConstraintViolationException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.data.domain.Page;
@@ -13,10 +18,12 @@ import org.springframework.data.domain.Sort;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JsonFileFakeDBRepositoryTest {
 
@@ -353,6 +360,79 @@ class JsonFileFakeDBRepositoryTest {
                 .hasValueSatisfying(found -> assertThat(found.getName()).isEqualTo("api"));
     }
 
+    @Test
+    void rejectsNullFieldsAnnotatedWithFakeDBNotNull() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<ValidatedUser, Long> repository =
+                template.repository("users", ValidatedUser.class, Long.class);
+
+        assertThatThrownBy(() -> repository.save(new ValidatedUser(1L, null, "ada@test.com")))
+                .isInstanceOf(FakeDBConstraintViolationException.class)
+                .hasMessageContaining("cannot be null");
+    }
+
+    @Test
+    void rejectsDuplicateFieldsAnnotatedWithFakeDBUnique() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<ValidatedUser, Long> repository =
+                template.repository("users", ValidatedUser.class, Long.class);
+
+        repository.save(new ValidatedUser(1L, "Ada", "ada@test.com"));
+
+        assertThatThrownBy(() -> repository.save(new ValidatedUser(2L, "Ada Clone", "ada@test.com")))
+                .isInstanceOf(FakeDBConstraintViolationException.class)
+                .hasMessageContaining("already contains value");
+    }
+
+    @Test
+    void rejectsDuplicateUniqueFieldsInsideSaveAllBatch() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<ValidatedUser, Long> repository =
+                template.repository("users", ValidatedUser.class, Long.class);
+
+        assertThatThrownBy(() -> repository.saveAll(List.of(
+                new ValidatedUser(1L, "Ada", "ada@test.com"),
+                new ValidatedUser(2L, "Ada Clone", "ada@test.com")
+        )))
+                .isInstanceOf(FakeDBConstraintViolationException.class)
+                .hasMessageContaining("already contains value");
+    }
+
+    @Test
+    void appliesCreatedAndLastModifiedAuditDates() throws InterruptedException {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<ValidatedUser, Long> repository =
+                template.repository("users", ValidatedUser.class, Long.class);
+
+        ValidatedUser user = repository.save(new ValidatedUser(1L, "Ada", "ada@test.com"));
+        LocalDateTime createdAt = user.getCreatedAt();
+        LocalDateTime updatedAt = user.getUpdatedAt();
+
+        Thread.sleep(5);
+        user.setName("Ada Lovelace");
+        repository.save(user);
+
+        assertThat(user.getCreatedAt()).isEqualTo(createdAt);
+        assertThat(user.getUpdatedAt()).isAfter(updatedAt);
+        assertThat(repository.findById(1L))
+                .hasValueSatisfying(found -> {
+                    assertThat(found.getCreatedAt()).isEqualTo(createdAt);
+                    assertThat(found.getUpdatedAt()).isAfter(updatedAt);
+                });
+    }
+
     private record Student(@FakeDBId Long id, String name) {
     }
 
@@ -435,6 +515,73 @@ class JsonFileFakeDBRepositoryTest {
 
         public void setName(String name) {
             this.name = name;
+        }
+    }
+
+    private static class ValidatedUser {
+
+        @FakeDBId
+        private Long id;
+
+        @FakeDBNotNull
+        private String name;
+
+        @FakeDBUnique
+        private String email;
+
+        @FakeDBCreatedDate
+        private LocalDateTime createdAt;
+
+        @FakeDBLastModifiedDate
+        private LocalDateTime updatedAt;
+
+        public ValidatedUser() {
+        }
+
+        private ValidatedUser(Long id, String name, String email) {
+            this.id = id;
+            this.name = name;
+            this.email = email;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getEmail() {
+            return email;
+        }
+
+        public void setEmail(String email) {
+            this.email = email;
+        }
+
+        public LocalDateTime getCreatedAt() {
+            return createdAt;
+        }
+
+        public void setCreatedAt(LocalDateTime createdAt) {
+            this.createdAt = createdAt;
+        }
+
+        public LocalDateTime getUpdatedAt() {
+            return updatedAt;
+        }
+
+        public void setUpdatedAt(LocalDateTime updatedAt) {
+            this.updatedAt = updatedAt;
         }
     }
 

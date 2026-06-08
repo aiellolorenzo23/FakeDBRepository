@@ -13,9 +13,13 @@ a production database, but to make persistent mock data easy to use inside Sprin
 - Spring Boot 3 auto-configuration.
 - Generic CRUD repository API.
 - Optional automatic Spring bean repositories with `@EnableFakeDBRepositories`.
+- Basic query method derivation for automatic repositories.
 - Entity id resolution through `@FakeDBId` or a field named `id`.
+- Generated ids with `@FakeDBGeneratedValue`.
 - Optional entity-to-table mapping with `@FakeDBTable`.
 - Field-to-column mapping with `@FakeDBColumn`.
+- Lightweight validation with `@FakeDBNotNull` and `@FakeDBUnique`.
+- Auditing with `@FakeDBCreatedDate` and `@FakeDBLastModifiedDate`.
 - Predicate-based repository queries.
 - Sorting and pagination through Spring Data `Sort`, `Pageable`, and `Page`.
 - Configurable database file path, database name, default schema, pretty printing, auto creation, and backups.
@@ -382,6 +386,54 @@ private String id;
 
 Generated ids require a writable id field. Java records have final components, so they are not suitable
 for generated ids unless the id is supplied manually.
+
+## Validation And Auditing
+
+FakeDB supports lightweight validation annotations during `save` and `saveAll`:
+
+```java
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBNotNull;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBUnique;
+
+public class User {
+
+    @FakeDBId
+    private Long id;
+
+    @FakeDBNotNull
+    private String name;
+
+    @FakeDBUnique
+    private String email;
+}
+```
+
+`@FakeDBNotNull` rejects `null` values.
+`@FakeDBUnique` rejects duplicate non-null values in the same table, including duplicates inside a `saveAll` batch.
+Violations raise `FakeDBConstraintViolationException`.
+
+Auditing fields can be filled automatically:
+
+```java
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBCreatedDate;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBLastModifiedDate;
+
+public class User {
+
+    @FakeDBCreatedDate
+    private LocalDateTime createdAt;
+
+    @FakeDBLastModifiedDate
+    private LocalDateTime updatedAt;
+}
+```
+
+`@FakeDBCreatedDate` is set only when a new row is inserted and the field is currently `null`.
+`@FakeDBLastModifiedDate` is updated on every save.
+Supported auditing field types are `Instant`, `LocalDateTime`, `OffsetDateTime`, `ZonedDateTime`, `Date`, and `String`.
+
+Validation and auditing are evaluated in memory. Generated and audited fields require writable fields, so immutable
+records are only suitable when those values are supplied manually.
 
 Table mapping is optional:
 
