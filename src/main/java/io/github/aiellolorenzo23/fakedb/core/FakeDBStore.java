@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.function.Function;
 
 public class FakeDBStore {
 
@@ -64,6 +65,18 @@ public class FakeDBStore {
         } catch (IOException ex) {
             throw new FakeDBException("Cannot save FakeDB file: " + path, ex);
         }
+    }
+
+    public synchronized <R> R read(Function<FakeDBDatabase, R> reader) {
+        FakeDBDatabase database = load();
+        return reader.apply(database);
+    }
+
+    public synchronized <R> R update(Function<FakeDBDatabase, R> updater) {
+        FakeDBDatabase database = load();
+        R result = updater.apply(database);
+        save(database);
+        return result;
     }
 
     private FakeDBDatabase createEmptyDatabase() {

@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> {
 
@@ -31,7 +32,7 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
             Class<T> entityClass,
             Class<ID> idClass
     ) {
-        this.objectMapper = objectMapper;
+        this.objectMapper = FakeDBObjectMapper.configure(objectMapper.copy());
         this.store = store;
         this.schema = schema;
         this.table = table;
@@ -43,9 +44,25 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
 
     @Override
     public synchronized List<T> findAll() {
-        return readTable().stream()
-                .map(item -> objectMapper.convertValue(item, entityClass))
+        return store.read(database -> toEntities(database.table(schema, table)));
+    }
+
+    @Override
+    public synchronized List<T> findAll(Predicate<T> predicate) {
+        Objects.requireNonNull(predicate, "predicate cannot be null");
+
+        return findAll().stream()
+                .filter(predicate)
                 .toList();
+    }
+
+    @Override
+    public synchronized Optional<T> findFirst(Predicate<T> predicate) {
+        Objects.requireNonNull(predicate, "predicate cannot be null");
+
+        return findAll().stream()
+                .filter(predicate)
+                .findFirst();
     }
 
     @Override
@@ -62,26 +79,32 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
             throw new FakeDBConfigurationException("FakeDB entity id cannot be null");
         }
 
-        FakeDBDatabase database = store.load();
-        List<Object> rows = database.table(schema, table);
-        int existingIndex = findIndexById(rows, id);
-        Object value = objectMapper.convertValue(entity, Object.class);
-        if (existingIndex >= 0) {
-            rows.set(existingIndex, value);
-        } else {
-            rows.add(value);
-        }
-        store.save(database);
-        return entity;
+        return store.update(database -> {
+            upsert(database.table(schema, table), entity, id);
+            return entity;
+        });
     }
 
     @Override
     public synchronized List<T> saveAll(Collection<T> entities) {
-        List<T> saved = new ArrayList<>();
-        for (T entity : entities) {
-            saved.add(save(entity));
-        }
-        return saved;
+        Objects.requireNonNull(entities, "entities cannot be null");
+
+        return store.update(database -> {
+            List<Object> rows = database.table(schema, table);
+            List<T> saved = new ArrayList<>();
+
+            for (T entity : entities) {
+                ID id = readId(entity);
+                if (id == null) {
+                    throw new FakeDBConfigurationException("FakeDB entity id cannot be null");
+                }
+
+                upsert(rows, entity, id);
+                saved.add(entity);
+            }
+
+            return saved;
+        });
     }
 
     @Override
@@ -91,18 +114,19 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
 
     @Override
     public synchronized long count() {
-        return readTable().size();
+        return store.read(database -> (long) database.table(schema, table).size());
     }
 
     @Override
     public synchronized void deleteById(ID id) {
-        FakeDBDatabase database = store.load();
-        List<Object> rows = database.table(schema, table);
-        boolean removed = rows.removeIf(item -> Objects.equals(readId(objectMapper.convertValue(item, entityClass)), id));
-        if (!removed) {
-            throw new FakeDBEntityNotFoundException("No FakeDB entity found with id " + id);
-        }
-        store.save(database);
+        store.update(database -> {
+            List<Object> rows = database.table(schema, table);
+            boolean removed = rows.removeIf(item -> Objects.equals(readId(objectMapper.convertValue(item, entityClass)), id));
+            if (!removed) {
+                throw new FakeDBEntityNotFoundException("No FakeDB entity found with id " + id);
+            }
+            return null;
+        });
     }
 
     @Override
@@ -112,13 +136,26 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
 
     @Override
     public synchronized void deleteAll() {
-        FakeDBDatabase database = store.load();
-        database.table(schema, table).clear();
-        store.save(database);
+        store.update(database -> {
+            database.table(schema, table).clear();
+            return null;
+        });
     }
 
-    private List<Object> readTable() {
-        return store.load().table(schema, table);
+    private List<T> toEntities(List<Object> rows) {
+        return rows.stream()
+                .map(item -> objectMapper.convertValue(item, entityClass))
+                .toList();
+    }
+
+    private void upsert(List<Object> rows, T entity, ID id) {
+        int existingIndex = findIndexById(rows, id);
+        Object value = objectMapper.convertValue(entity, Object.class);
+        if (existingIndex >= 0) {
+            rows.set(existingIndex, value);
+        } else {
+            rows.add(value);
+        }
     }
 
     @SuppressWarnings("unchecked")

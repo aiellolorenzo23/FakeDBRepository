@@ -14,6 +14,8 @@ a production database, but to make persistent mock data easy to use inside Sprin
 - Generic CRUD repository API.
 - Entity id resolution through `@FakeDBId` or a field named `id`.
 - Optional entity-to-table mapping with `@FakeDBTable`.
+- Field-to-column mapping with `@FakeDBColumn`.
+- Predicate-based repository queries.
 - Configurable database file path, database name, default schema, pretty printing, auto creation, and backups.
 - Jackson support, including Java time modules through `findAndRegisterModules()`.
 
@@ -213,6 +215,8 @@ FakeDBRepository<Student, Long> archivedStudents =
 
 ```java
 List<T> findAll();
+List<T> findAll(Predicate<T> predicate);
+Optional<T> findFirst(Predicate<T> predicate);
 Optional<T> findById(ID id);
 T save(T entity);
 List<T> saveAll(Collection<T> entities);
@@ -227,6 +231,18 @@ void deleteAll();
 The id cannot be `null`.
 
 `deleteById` raises `FakeDBEntityNotFoundException` when no row exists for the provided id.
+
+Predicate queries are evaluated in memory after loading the table:
+
+```java
+List<Student> studentsNamedAda =
+        students.findAll(student -> student.name().equals("Ada"));
+
+Optional<Student> firstStudentStartingWithL =
+        students.findFirst(student -> student.name().startsWith("L"));
+```
+
+`saveAll` performs a single load-modify-save operation for the whole collection.
 
 ## Entity Mapping
 
@@ -250,6 +266,32 @@ public class Student {
 
 When `@FakeDBTable` is not present, FakeDB uses the entity simple class name as the table name.
 When the annotation schema is blank, FakeDB uses `fakedb.default-schema`.
+
+Use `@FakeDBColumn` when the JSON field name does not match the Java property name:
+
+```java
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBColumn;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
+
+public record Product(
+        @FakeDBId Long id,
+        @FakeDBColumn("shop_name") String shopName,
+        @FakeDBColumn("product_id") List<Long> productIds,
+        @FakeDBColumn("free_ship") boolean freeShip
+) {
+}
+```
+
+This maps to JSON like:
+
+```json
+{
+  "id": 1,
+  "shop_name": "Fake Shop",
+  "product_id": [10, 20],
+  "free_ship": true
+}
+```
 
 ## JSON Format
 
@@ -278,7 +320,7 @@ Tables are represented directly inside each schema. There is no extra `tables` w
 
 - FakeDB is intended for local development, testing, and prototyping.
 - Repository methods are synchronized inside each repository instance, but the JSON file is not a substitute for a transactional database.
-- Each repository operation loads and saves the JSON file as needed.
+- Write operations use an atomic load-modify-save store update inside the current application instance.
 - Large datasets, concurrent application instances, relational constraints, query languages, migrations, indexes, and transactions are outside the current scope.
 - Use a real database for production workloads or whenever durability, concurrency, and query performance matter.
 

@@ -12,8 +12,8 @@ public class FakeDBTemplate {
 
     public FakeDBTemplate(FakeDBProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
-        this.objectMapper = objectMapper;
-        this.store = new FakeDBStore(properties, objectMapper);
+        this.objectMapper = FakeDBObjectMapper.configure(objectMapper.copy());
+        this.store = new FakeDBStore(properties, this.objectMapper);
     }
 
     public <T, ID> FakeDBRepository<T, ID> repository(
