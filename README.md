@@ -63,17 +63,20 @@ coordinates can stay the same unless the group, artifact, or version changes.
 
 ## Publishing to GitHub Packages
 
-GitHub Packages can host FakeDB as a Maven package. Replace `OWNER` with your GitHub username or
-organization and `REPOSITORY` with the GitHub repository that contains this project.
+GitHub Packages can host FakeDB as a Maven package. This project is configured to publish to:
 
-Add this `distributionManagement` block to `pom.xml` before publishing:
+```text
+https://maven.pkg.github.com/aiellolorenzo23/FakeDBRepository
+```
+
+The Maven `distributionManagement` repository id is `github`:
 
 ```xml
 <distributionManagement>
     <repository>
         <id>github</id>
-        <name>GitHub OWNER Apache Maven Packages</name>
-        <url>https://maven.pkg.github.com/OWNER/REPOSITORY</url>
+        <name>GitHub aiellolorenzo23 Apache Maven Packages</name>
+        <url>https://maven.pkg.github.com/aiellolorenzo23/FakeDBRepository</url>
     </repository>
 </distributionManagement>
 ```
@@ -86,8 +89,8 @@ the `distributionManagement` repository id.
     <servers>
         <server>
             <id>github</id>
-            <username>OWNER</username>
-            <password>GITHUB_TOKEN</password>
+            <username>aiellolorenzo23</username>
+            <password>${env.GITHUB_TOKEN}</password>
         </server>
     </servers>
 </settings>
@@ -114,7 +117,7 @@ To consume the package from another Maven project, add the GitHub Packages repos
 <repositories>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/OWNER/REPOSITORY</url>
+        <url>https://maven.pkg.github.com/aiellolorenzo23/FakeDBRepository</url>
     </repository>
 </repositories>
 ```
@@ -580,4 +583,3 @@ On Windows:
 ```bash
 ./mvnw.cmd test
 ```
-
