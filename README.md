@@ -139,6 +139,8 @@ fakedb:
   auto-create: true
   pretty-print: true
   backup-on-save: false
+  naming-strategy: identity
+  fail-on-unknown-properties: true
 ```
 
 | Property | Default | Description |
@@ -150,6 +152,8 @@ fakedb:
 | `fakedb.auto-create` | `true` | Creates an empty in-memory database structure when the file does not exist. The file is written on save/delete operations. |
 | `fakedb.pretty-print` | `true` | Writes formatted JSON. |
 | `fakedb.backup-on-save` | `false` | Creates a `.bak` copy before overwriting an existing database file. |
+| `fakedb.naming-strategy` | `identity` | Entity field naming strategy. Supported values: `identity`, `snake_case`. |
+| `fakedb.fail-on-unknown-properties` | `true` | Fails when JSON rows contain fields that are not present in the entity. Set to `false` to ignore extra fields. |
 
 `fakedb.path` is required. If it is missing or blank, FakeDB raises a `FakeDBConfigurationException`.
 
@@ -281,6 +285,16 @@ public record Product(
 ) {
 }
 ```
+
+You can also enable automatic snake_case mapping:
+
+```yaml
+fakedb:
+  naming-strategy: snake_case
+```
+
+With this setting, `shopName` maps to `shop_name` and `freeShip` maps to `free_ship`.
+Use `@FakeDBColumn` for exceptions such as `productIds` mapped to `product_id` instead of `product_ids`.
 
 This maps to JSON like:
 

@@ -161,6 +161,68 @@ class JsonFileFakeDBRepositoryTest {
                 });
     }
 
+    @Test
+    void mapsCamelCaseFieldsUsingSnakeCaseNamingStrategy() throws Exception {
+        FakeDBProperties properties = new FakeDBProperties();
+        Path dbPath = tempDir.resolve("database.json");
+        properties.setPath(dbPath.toString());
+        properties.setNamingStrategy(FakeDBProperties.NamingStrategy.SNAKE_CASE);
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<SupplierProduct, Long> repository =
+                template.repository("products", SupplierProduct.class, Long.class);
+
+        repository.save(new SupplierProduct(1L, "Fake Shop", true, List.of(10L, 20L)));
+
+        String json = Files.readString(dbPath);
+
+        assertThat(json).contains("\"shop_name\"");
+        assertThat(json).contains("\"free_ship\"");
+        assertThat(json).contains("\"product_id\"");
+        assertThat(json).doesNotContain("\"shopName\"");
+        assertThat(json).doesNotContain("\"freeShip\"");
+        assertThat(json).doesNotContain("\"productIds\"");
+        assertThat(json).doesNotContain("\"product_ids\"");
+        assertThat(repository.findById(1L))
+                .hasValueSatisfying(product -> {
+                    assertThat(product.shopName()).isEqualTo("Fake Shop");
+                    assertThat(product.freeShip()).isTrue();
+                    assertThat(product.productIds()).containsExactly(10L, 20L);
+                });
+    }
+
+    @Test
+    void ignoresUnknownJsonPropertiesWhenConfigured() throws Exception {
+        FakeDBProperties properties = new FakeDBProperties();
+        Path dbPath = tempDir.resolve("database.json");
+        properties.setPath(dbPath.toString());
+        properties.setFailOnUnknownProperties(false);
+
+        Files.writeString(dbPath, """
+                {
+                  "version": "1.0.0",
+                  "database": "test_database",
+                  "schemas": {
+                    "main": {
+                      "students": [
+                        {
+                          "id": 1,
+                          "name": "Lorenzo",
+                          "extra_field": "ignored"
+                        }
+                      ]
+                    }
+                  }
+                }
+                """);
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<Student, Long> repository = template.repository("students", Student.class, Long.class);
+
+        assertThat(repository.findById(1L))
+                .hasValueSatisfying(student -> assertThat(student.name()).isEqualTo("Lorenzo"));
+    }
+
     private record Student(@FakeDBId Long id, String name) {
     }
 
@@ -169,6 +231,14 @@ class JsonFileFakeDBRepositoryTest {
             @FakeDBColumn("shop_name") String shopName,
             @FakeDBColumn("product_id") List<Long> productIds,
             @FakeDBColumn("free_ship") boolean freeShip
+    ) {
+    }
+
+    private record SupplierProduct(
+            @FakeDBId Long id,
+            String shopName,
+            boolean freeShip,
+            @FakeDBColumn("product_id") List<Long> productIds
     ) {
     }
 

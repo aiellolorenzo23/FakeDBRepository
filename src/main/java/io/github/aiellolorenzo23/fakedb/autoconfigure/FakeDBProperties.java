@@ -19,6 +19,10 @@ public class FakeDBProperties {
 
     private boolean backupOnSave = false;
 
+    private NamingStrategy namingStrategy = NamingStrategy.IDENTITY;
+
+    private boolean failOnUnknownProperties = true;
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -73,5 +77,26 @@ public class FakeDBProperties {
 
     public void setBackupOnSave(boolean backupOnSave) {
         this.backupOnSave = backupOnSave;
+    }
+
+    public NamingStrategy getNamingStrategy() {
+        return namingStrategy;
+    }
+
+    public void setNamingStrategy(NamingStrategy namingStrategy) {
+        this.namingStrategy = namingStrategy == null ? NamingStrategy.IDENTITY : namingStrategy;
+    }
+
+    public boolean isFailOnUnknownProperties() {
+        return failOnUnknownProperties;
+    }
+
+    public void setFailOnUnknownProperties(boolean failOnUnknownProperties) {
+        this.failOnUnknownProperties = failOnUnknownProperties;
+    }
+
+    public enum NamingStrategy {
+        IDENTITY,
+        SNAKE_CASE
     }
 }

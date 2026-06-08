@@ -12,7 +12,7 @@ public class FakeDBTemplate {
 
     public FakeDBTemplate(FakeDBProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
-        this.objectMapper = FakeDBObjectMapper.configure(objectMapper.copy());
+        this.objectMapper = FakeDBObjectMapper.configure(objectMapper.copy(), properties);
         this.store = new FakeDBStore(properties, this.objectMapper);
     }
 
