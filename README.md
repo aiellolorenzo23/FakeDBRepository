@@ -34,7 +34,7 @@ a production database, but to make persistent mock data easy to use inside Sprin
 
 ## Installation
 
-FakeDB is currently a local Maven artifact.
+FakeDB can be used as a local Maven artifact during development.
 
 Build and install it into your local Maven repository:
 
@@ -54,87 +54,73 @@ Then add it to another Spring Boot project:
 <dependency>
     <groupId>io.github.aiellolorenzo23</groupId>
     <artifactId>fakedb-spring-boot-starter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
-If the artifact is later published to a package registry or Maven hosting service, the dependency
-coordinates can stay the same unless the group, artifact, or version changes.
-
-## Publishing to GitHub Packages
-
-GitHub Packages can host FakeDB as a Maven package. This project is configured to publish to:
-
-```text
-https://maven.pkg.github.com/aiellolorenzo23/FakeDBRepository
-```
-
-The Maven `distributionManagement` repository id is `github`:
-
-```xml
-<distributionManagement>
-    <repository>
-        <id>github</id>
-        <name>GitHub aiellolorenzo23 Apache Maven Packages</name>
-        <url>https://maven.pkg.github.com/aiellolorenzo23/FakeDBRepository</url>
-    </repository>
-</distributionManagement>
-```
-
-Create or update `~/.m2/settings.xml` with a GitHub personal access token. The server `id` must match
-the `distributionManagement` repository id.
-
-```xml
-<settings>
-    <servers>
-        <server>
-            <id>github</id>
-            <username>aiellolorenzo23</username>
-            <password>${env.GITHUB_TOKEN}</password>
-        </server>
-    </servers>
-</settings>
-```
-
-The token needs permission to publish packages. For a classic personal access token, use `write:packages`
-and, if the repository is private, `repo`.
-
-Publish the package:
-
-```bash
-./mvnw deploy
-```
-
-On Windows:
-
-```bash
-./mvnw.cmd deploy
-```
-
-To consume the package from another Maven project, add the GitHub Packages repository:
-
-```xml
-<repositories>
-    <repository>
-        <id>github</id>
-        <url>https://maven.pkg.github.com/aiellolorenzo23/FakeDBRepository</url>
-    </repository>
-</repositories>
-```
-
-Then add the dependency:
+When FakeDB is available from Maven Central, consumers only need the dependency:
 
 ```xml
 <dependency>
     <groupId>io.github.aiellolorenzo23</groupId>
     <artifactId>fakedb-spring-boot-starter</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
 </dependency>
 ```
 
-GitHub Packages may require authentication to install packages too, including public packages. In that
-case, configure the consuming project's Maven environment with a matching `github` server in
-`~/.m2/settings.xml`, using a token with `read:packages`.
+## Publishing to Maven Central
+
+Maven Central is the recommended public distribution channel for FakeDB releases.
+
+Before publishing:
+
+- Create and verify the `io.github.aiellolorenzo23` namespace in Sonatype Central Portal.
+- Generate a Central Portal user token.
+- Configure a local GPG key for artifact signing.
+- Ensure the Git repository is clean and tag the release.
+
+Configure `~/.m2/settings.xml` with the Central Portal token. The server id must match the
+`central-release` profile configuration in `pom.xml`.
+
+```xml
+<settings>
+    <servers>
+        <server>
+            <id>central</id>
+            <username>${env.CENTRAL_USERNAME}</username>
+            <password>${env.CENTRAL_PASSWORD}</password>
+        </server>
+    </servers>
+</settings>
+```
+
+Build the Central-ready artifacts without publishing:
+
+```bash
+./mvnw -Pcentral-release verify
+```
+
+On Windows:
+
+```bash
+./mvnw.cmd -Pcentral-release verify
+```
+
+Publish to Central Portal:
+
+```bash
+./mvnw -Pcentral-release deploy
+```
+
+On Windows:
+
+```bash
+./mvnw.cmd -Pcentral-release deploy
+```
+
+The Central publishing profile creates the main jar, sources jar, javadocs jar, GPG signatures,
+and uploads the deployment through the Central Publishing Maven Plugin. The profile is configured
+with `autoPublish=false`, so the deployment can be reviewed in Central Portal before publishing.
 
 ## Configuration
 
