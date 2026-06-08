@@ -2,6 +2,7 @@ package io.github.aiellolorenzo23.fakedb.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBColumn;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBGeneratedValue;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
 import io.github.aiellolorenzo23.fakedb.autoconfigure.FakeDBProperties;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import org.springframework.data.domain.Sort;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -292,6 +294,65 @@ class JsonFileFakeDBRepositoryTest {
                 .containsExactly("Linus", "Lorenzo");
     }
 
+    @Test
+    void generatesIncrementIdWhenEntityIdIsNull() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<GeneratedStudent, Long> repository =
+                template.repository("students", GeneratedStudent.class, Long.class);
+
+        GeneratedStudent first = new GeneratedStudent(null, "Lorenzo");
+        GeneratedStudent second = new GeneratedStudent(null, "Ada");
+
+        repository.save(first);
+        repository.save(second);
+
+        assertThat(first.getId()).isEqualTo(1L);
+        assertThat(second.getId()).isEqualTo(2L);
+        assertThat(repository.findById(2L))
+                .hasValueSatisfying(student -> assertThat(student.getName()).isEqualTo("Ada"));
+    }
+
+    @Test
+    void generatesIncrementIdsInsideSaveAllBatch() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<GeneratedStudent, Long> repository =
+                template.repository("students", GeneratedStudent.class, Long.class);
+
+        List<GeneratedStudent> students = repository.saveAll(List.of(
+                new GeneratedStudent(null, "Lorenzo"),
+                new GeneratedStudent(null, "Ada"),
+                new GeneratedStudent(null, "Grace")
+        ));
+
+        assertThat(students)
+                .extracting(GeneratedStudent::getId)
+                .containsExactly(1L, 2L, 3L);
+        assertThat(repository.count()).isEqualTo(3);
+    }
+
+    @Test
+    void generatesUuidStringIdWhenEntityIdIsNull() {
+        FakeDBProperties properties = new FakeDBProperties();
+        properties.setPath(tempDir.resolve("database.json").toString());
+
+        FakeDBTemplate template = new FakeDBTemplate(properties, new ObjectMapper().findAndRegisterModules());
+        FakeDBRepository<GeneratedToken, String> repository =
+                template.repository("tokens", GeneratedToken.class, String.class);
+
+        GeneratedToken token = repository.save(new GeneratedToken(null, "api"));
+
+        assertThat(token.getId()).isNotBlank();
+        assertThat(UUID.fromString(token.getId())).isNotNull();
+        assertThat(repository.findById(token.getId()))
+                .hasValueSatisfying(found -> assertThat(found.getName()).isEqualTo("api"));
+    }
+
     private record Student(@FakeDBId Long id, String name) {
     }
 
@@ -309,6 +370,72 @@ class JsonFileFakeDBRepositoryTest {
             boolean freeShip,
             @FakeDBColumn("product_id") List<Long> productIds
     ) {
+    }
+
+    private static class GeneratedStudent {
+
+        @FakeDBId
+        @FakeDBGeneratedValue
+        private Long id;
+
+        private String name;
+
+        public GeneratedStudent() {
+        }
+
+        private GeneratedStudent(Long id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+    }
+
+    private static class GeneratedToken {
+
+        @FakeDBId
+        @FakeDBGeneratedValue(strategy = FakeDBGeneratedValue.Strategy.UUID)
+        private String id;
+
+        private String name;
+
+        public GeneratedToken() {
+        }
+
+        private GeneratedToken(String id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
     }
 
     private static class CountingFakeDBStore extends FakeDBStore {

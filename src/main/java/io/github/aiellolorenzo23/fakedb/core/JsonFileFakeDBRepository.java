@@ -2,6 +2,7 @@ package io.github.aiellolorenzo23.fakedb.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBColumn;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBGeneratedValue;
 import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConfigurationException;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBEntityNotFoundException;
@@ -17,6 +18,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Predicate;
 
 public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> {
@@ -109,13 +111,10 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
 
     @Override
     public synchronized T save(T entity) {
-        ID id = readId(entity);
-        if (id == null) {
-            throw new FakeDBConfigurationException("FakeDB entity id cannot be null");
-        }
-
         return store.update(database -> {
-            upsert(database.table(schema, table), entity, id);
+            List<Object> rows = database.table(schema, table);
+            ID id = ensureId(entity, rows);
+            upsert(rows, entity, id);
             return entity;
         });
     }
@@ -129,11 +128,7 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
             List<T> saved = new ArrayList<>();
 
             for (T entity : entities) {
-                ID id = readId(entity);
-                if (id == null) {
-                    throw new FakeDBConfigurationException("FakeDB entity id cannot be null");
-                }
-
+                ID id = ensureId(entity, rows);
                 upsert(rows, entity, id);
                 saved.add(entity);
             }
@@ -263,6 +258,89 @@ public class JsonFileFakeDBRepository<T, ID> implements FakeDBRepository<T, ID> 
             return (ID) idField.get(entity);
         } catch (IllegalAccessException ex) {
             throw new FakeDBConfigurationException("Cannot read FakeDB id field " + idField.getName(), ex);
+        }
+    }
+
+    private ID ensureId(T entity, List<Object> rows) {
+        ID id = readId(entity);
+        if (id != null) {
+            return id;
+        }
+
+        FakeDBGeneratedValue generatedValue = idField.getAnnotation(FakeDBGeneratedValue.class);
+        if (generatedValue == null) {
+            throw new FakeDBConfigurationException("FakeDB entity id cannot be null");
+        }
+
+        ID generatedId = generateId(rows, generatedValue.strategy());
+        writeId(entity, generatedId);
+        return generatedId;
+    }
+
+    @SuppressWarnings("unchecked")
+    private ID generateId(List<Object> rows, FakeDBGeneratedValue.Strategy strategy) {
+        Class<?> idType = idField.getType();
+
+        if (strategy == FakeDBGeneratedValue.Strategy.UUID) {
+            UUID uuid = UUID.randomUUID();
+            if (idType == UUID.class) {
+                return (ID) uuid;
+            }
+            if (idType == String.class) {
+                return (ID) uuid.toString();
+            }
+            throw new FakeDBConfigurationException(
+                    "FakeDB UUID generated ids require a String or UUID id field"
+            );
+        }
+
+        long nextId = rows.stream()
+                .map(item -> objectMapper.convertValue(item, entityClass))
+                .map(this::readId)
+                .filter(Objects::nonNull)
+                .mapToLong(this::toLongId)
+                .max()
+                .orElse(0L) + 1L;
+
+        if (idType == Long.class || idType == long.class) {
+            return (ID) Long.valueOf(nextId);
+        }
+        if (idType == Integer.class || idType == int.class) {
+            return (ID) Integer.valueOf(Math.toIntExact(nextId));
+        }
+        if (idType == String.class) {
+            return (ID) Long.toString(nextId);
+        }
+
+        throw new FakeDBConfigurationException(
+                "FakeDB INCREMENT generated ids require a Long, Integer, or String id field"
+        );
+    }
+
+    private long toLongId(ID id) {
+        if (id instanceof Number number) {
+            return number.longValue();
+        }
+        if (id instanceof String string) {
+            try {
+                return Long.parseLong(string);
+            } catch (NumberFormatException ex) {
+                throw new FakeDBConfigurationException("FakeDB cannot increment non-numeric String id " + string, ex);
+            }
+        }
+
+        throw new FakeDBConfigurationException("FakeDB cannot increment id value " + id);
+    }
+
+    private void writeId(T entity, ID id) {
+        try {
+            idField.set(entity, id);
+        } catch (IllegalAccessException | IllegalArgumentException ex) {
+            throw new FakeDBConfigurationException(
+                    "Cannot write generated FakeDB id field " + idField.getName()
+                            + ". Generated ids require a writable id field.",
+                    ex
+            );
         }
     }
 

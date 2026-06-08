@@ -235,7 +235,7 @@ void deleteAll();
 ```
 
 `save` inserts a new row when the id does not exist and replaces the existing row when the id already exists.
-The id cannot be `null`.
+The id cannot be `null` unless the id field is annotated with `@FakeDBGeneratedValue`.
 
 `deleteById` raises `FakeDBEntityNotFoundException` when no row exists for the provided id.
 
@@ -272,6 +272,36 @@ FakeDB resolves the entity id in this order:
 2. A field named `id`.
 
 If neither exists, FakeDB raises a `FakeDBConfigurationException`.
+
+Generated ids are supported for writable id fields:
+
+```java
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBGeneratedValue;
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBId;
+
+public class Student {
+
+    @FakeDBId
+    @FakeDBGeneratedValue
+    private Long id;
+
+    private String name;
+
+    // getters and setters
+}
+```
+
+The default strategy is `INCREMENT`, supported for `Long`, `Integer`, and numeric `String` ids.
+Use UUID generation for `String` or `UUID` ids:
+
+```java
+@FakeDBId
+@FakeDBGeneratedValue(strategy = FakeDBGeneratedValue.Strategy.UUID)
+private String id;
+```
+
+Generated ids require a writable id field. Java records have final components, so they are not suitable
+for generated ids unless the id is supplied manually.
 
 Table mapping is optional:
 
