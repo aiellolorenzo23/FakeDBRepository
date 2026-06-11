@@ -7,7 +7,7 @@
 
     <groupId>io.github.aiellolorenzo23</groupId>
     <artifactId>fakedb-spring-boot-starter</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <packaging>jar</packaging>
 
     <name>FakeDB Spring Boot Starter</name>
@@ -34,7 +34,7 @@
         <connection>scm:git:https://github.com/aiellolorenzo23/FakeDBRepository.git</connection>
         <developerConnection>scm:git:https://github.com/aiellolorenzo23/FakeDBRepository.git</developerConnection>
         <url>https://github.com/aiellolorenzo23/FakeDBRepository</url>
-        <tag>v0.1.0</tag>
+        <tag>v0.2.0</tag>
     </scm>
 
     <properties>
