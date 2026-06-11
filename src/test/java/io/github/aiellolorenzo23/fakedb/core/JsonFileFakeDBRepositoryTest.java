@@ -49,6 +49,42 @@ class JsonFileFakeDBRepositoryTest {
     }
 
     @Test
+    void usesMultipleDatasourcePaths() throws Exception {
+        FakeDBProperties properties = new FakeDBProperties();
+
+        FakeDBProperties.DatasourceProperties players = new FakeDBProperties.DatasourceProperties();
+        Path playersPath = tempDir.resolve("players.json");
+        players.setPath(playersPath.toString());
+        players.setDatabase("players_database");
+
+        FakeDBProperties.DatasourceProperties sessions = new FakeDBProperties.DatasourceProperties();
+        Path sessionsPath = tempDir.resolve("sessions.json");
+        sessions.setPath(sessionsPath.toString());
+        sessions.setDatabase("sessions_database");
+
+        properties.getDatasources().put("players", players);
+        properties.getDatasources().put("sessions", sessions);
+
+        FakeDBDatasources datasources = new FakeDBDatasources(
+                properties,
+                new ObjectMapper().findAndRegisterModules()
+        );
+        FakeDBRepository<Student, Long> playerRepository =
+                datasources.repository("players", "students", Student.class, Long.class);
+        FakeDBRepository<Student, Long> sessionRepository =
+                datasources.repository("sessions", "students", Student.class, Long.class);
+
+        playerRepository.save(new Student(1L, "Lorenzo"));
+        sessionRepository.save(new Student(1L, "Ada"));
+
+        assertThat(datasources.names()).containsExactly("players", "sessions");
+        assertThat(Files.readString(playersPath)).contains("\"players_database\"", "\"Lorenzo\"");
+        assertThat(Files.readString(playersPath)).doesNotContain("\"Ada\"");
+        assertThat(Files.readString(sessionsPath)).contains("\"sessions_database\"", "\"Ada\"");
+        assertThat(Files.readString(sessionsPath)).doesNotContain("\"Lorenzo\"");
+    }
+
+    @Test
     void savesUsingFakeDBStudioCompatibleFormat() throws Exception {
         FakeDBProperties properties = new FakeDBProperties();
         Path dbPath = tempDir.resolve("database.json");

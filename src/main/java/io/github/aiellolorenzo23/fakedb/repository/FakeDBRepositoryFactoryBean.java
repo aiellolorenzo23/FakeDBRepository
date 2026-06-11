@@ -1,7 +1,8 @@
 package io.github.aiellolorenzo23.fakedb.repository;
 
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBDatasource;
+import io.github.aiellolorenzo23.fakedb.core.FakeDBDatasources;
 import io.github.aiellolorenzo23.fakedb.core.FakeDBRepository;
-import io.github.aiellolorenzo23.fakedb.core.FakeDBTemplate;
 import io.github.aiellolorenzo23.fakedb.exception.FakeDBConfigurationException;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
@@ -18,7 +19,7 @@ import java.util.Arrays;
 
 public class FakeDBRepositoryFactoryBean implements FactoryBean<Object>, InitializingBean {
 
-    private final FakeDBTemplate fakeDBTemplate;
+    private final FakeDBDatasources fakeDBDatasources;
 
     private String repositoryInterfaceName;
 
@@ -26,8 +27,8 @@ public class FakeDBRepositoryFactoryBean implements FactoryBean<Object>, Initial
 
     private Object proxy;
 
-    public FakeDBRepositoryFactoryBean(FakeDBTemplate fakeDBTemplate) {
-        this.fakeDBTemplate = fakeDBTemplate;
+    public FakeDBRepositoryFactoryBean(FakeDBDatasources fakeDBDatasources) {
+        this.fakeDBDatasources = fakeDBDatasources;
     }
 
     public void setRepositoryInterfaceName(String repositoryInterfaceName) {
@@ -48,7 +49,7 @@ public class FakeDBRepositoryFactoryBean implements FactoryBean<Object>, Initial
         }
 
         RepositoryTypes repositoryTypes = resolveRepositoryTypes(repositoryInterface);
-        FakeDBRepository<?, ?> delegate = fakeDBTemplate.repository(
+        FakeDBRepository<?, ?> delegate = fakeDBDatasources.template(resolveDatasourceName(repositoryInterface)).repository(
                 repositoryTypes.entityClass(),
                 repositoryTypes.idClass()
         );
@@ -58,6 +59,11 @@ public class FakeDBRepositoryFactoryBean implements FactoryBean<Object>, Initial
                 new Class<?>[]{repositoryInterface},
                 new RepositoryInvocationHandler(repositoryInterface, repositoryTypes.entityClass(), delegate)
         );
+    }
+
+    private String resolveDatasourceName(Class<?> repositoryInterface) {
+        FakeDBDatasource datasource = repositoryInterface.getAnnotation(FakeDBDatasource.class);
+        return datasource == null ? null : datasource.value();
     }
 
     @Override

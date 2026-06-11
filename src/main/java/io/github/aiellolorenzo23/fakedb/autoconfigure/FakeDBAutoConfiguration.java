@@ -1,6 +1,7 @@
 package io.github.aiellolorenzo23.fakedb.autoconfigure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.github.aiellolorenzo23.fakedb.core.FakeDBDatasources;
 import io.github.aiellolorenzo23.fakedb.core.FakeDBTemplate;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -21,7 +22,13 @@ public class FakeDBAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public FakeDBTemplate fakeDBTemplate(FakeDBProperties properties, ObjectMapper objectMapper) {
-        return new FakeDBTemplate(properties, objectMapper);
+    public FakeDBDatasources fakeDBDatasources(FakeDBProperties properties, ObjectMapper objectMapper) {
+        return new FakeDBDatasources(properties, objectMapper);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public FakeDBTemplate fakeDBTemplate(FakeDBDatasources fakeDBDatasources) {
+        return fakeDBDatasources.defaultTemplate();
     }
 }

@@ -28,6 +28,7 @@ a production database, but to make persistent mock data easy to use inside Sprin
 - Predicate-based repository queries.
 - Sorting and pagination through Spring Data `Sort`, `Pageable`, and `Page`.
 - Configurable database file path, database name, default schema, pretty printing, auto creation, and backups.
+- Optional multiple datasources, each backed by a separate JSON file.
 - Jackson support, including Java time modules through `findAndRegisterModules()`.
 
 ## Requirements
@@ -154,8 +155,44 @@ fakedb:
 | `fakedb.backup-on-save` | `false` | Creates a `.bak` copy before overwriting an existing database file. |
 | `fakedb.naming-strategy` | `identity` | Entity field naming strategy. Supported values: `identity`, `snake_case`. |
 | `fakedb.fail-on-unknown-properties` | `true` | Fails when JSON rows contain fields that are not present in the entity. Set to `false` to ignore extra fields. |
+| `fakedb.default-datasource` | first configured datasource | Datasource used by the default `FakeDBTemplate` when multiple datasources are configured. |
+| `fakedb.datasources.<name>.path` | none | Path of a named datasource JSON database file. |
 
-`fakedb.path` is required. If it is missing or blank, FakeDB raises a `FakeDBConfigurationException`.
+`fakedb.path` is required for single-file configuration. If named datasources are configured,
+`fakedb.path` can be omitted and FakeDB uses the first configured datasource as the default unless
+`fakedb.default-datasource` is set.
+
+Named datasources inherit top-level settings unless they override them:
+
+```yaml
+fakedb:
+  default-datasource: players
+  default-schema: main
+  pretty-print: true
+  datasources:
+    players:
+      path: ./db/players.json
+      database: players_database
+    sessions:
+      path: ./db/game_sessions.json
+      database: sessions_database
+    saves:
+      path: ./db/save_states.json
+      database: saves_database
+```
+
+Use `FakeDBDatasources` to access a named datasource programmatically:
+
+```java
+import io.github.aiellolorenzo23.fakedb.core.FakeDBDatasources;
+import io.github.aiellolorenzo23.fakedb.core.FakeDBRepository;
+
+FakeDBRepository<Player, Long> players =
+        fakeDBDatasources.repository("players", Player.class, Long.class);
+
+FakeDBRepository<GameSession, String> sessions =
+        fakeDBDatasources.repository("sessions", GameSession.class, String.class);
+```
 
 ## Basic Usage
 
@@ -230,11 +267,15 @@ public class Application {
 Define a repository interface:
 
 ```java
+import io.github.aiellolorenzo23.fakedb.annotation.FakeDBDatasource;
 import io.github.aiellolorenzo23.fakedb.core.FakeDBRepository;
 
+@FakeDBDatasource("players")
 public interface StudentRepository extends FakeDBRepository<Student, Long> {
 }
 ```
+
+`@FakeDBDatasource` is optional. When it is not present, the repository uses the default datasource.
 
 Then inject it like a normal Spring bean:
 
